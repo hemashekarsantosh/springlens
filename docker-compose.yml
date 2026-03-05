@@ -95,8 +95,8 @@ services:
   # ── Ingestion Service ────────────────────────────────────────────────────────
   ingestion-service:
     build:
-      context: ./services/ingestion-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/ingestion-service/Dockerfile
     environment:
       DB_URL: jdbc:postgresql://timescaledb:5432/springlens_ingestion
       DB_USER: springlens
@@ -117,8 +117,8 @@ services:
   # ── Analysis Service ─────────────────────────────────────────────────────────
   analysis-service:
     build:
-      context: ./services/analysis-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/analysis-service/Dockerfile
     environment:
       DB_URL: jdbc:postgresql://timescaledb:5432/springlens_analysis
       DB_USER: springlens
@@ -136,8 +136,8 @@ services:
   # ── Recommendation Service ───────────────────────────────────────────────────
   recommendation-service:
     build:
-      context: ./services/recommendation-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/recommendation-service/Dockerfile
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/springlens_recommendation
       DB_USER: springlens
@@ -156,8 +156,8 @@ services:
   # ── Auth Service ─────────────────────────────────────────────────────────────
   auth-service:
     build:
-      context: ./services/auth-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/auth-service/Dockerfile
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/springlens_auth
       DB_USER: springlens
@@ -180,8 +180,8 @@ services:
   # ── Notification Service ─────────────────────────────────────────────────────
   notification-service:
     build:
-      context: ./services/notification-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/notification-service/Dockerfile
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/springlens_notification
       DB_USER: springlens
