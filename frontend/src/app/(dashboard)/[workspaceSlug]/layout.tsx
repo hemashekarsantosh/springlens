@@ -6,7 +6,7 @@ import { Header } from "@/components/layout/Header";
 
 interface WorkspaceLayoutProps {
   children: React.ReactNode;
-  params: { workspaceSlug: string };
+  params: Promise<{ workspaceSlug: string }>;
 }
 
 /**
@@ -21,7 +21,7 @@ export default async function WorkspaceLayout({ children, params }: WorkspaceLay
   const session = await auth();
   if (!session) redirect("/login");
 
-  const { workspaceSlug } = params;
+  const { workspaceSlug } = await params;
 
   // Derive workspace name from slug for display
   const workspaceName = workspaceSlug
