@@ -57,7 +57,7 @@ public class BillingController {
 
         try {
             // ✅ FIXED: Verify signature first using Stripe's SDK
-            com.stripe.net.Event event = com.stripe.net.Webhook.constructEvent(
+            com.stripe.model.Event event = com.stripe.net.Webhook.constructEvent(
                     payload, signature, webhookSecret);
 
             log.info("Stripe event type={}", event.getType());
@@ -83,7 +83,7 @@ public class BillingController {
 
             return ResponseEntity.ok(Map.of("status", "received"));
 
-        } catch (com.stripe.net.SignatureVerificationException ex) {
+        } catch (com.stripe.exception.SignatureVerificationException ex) {
             log.warn("Stripe webhook signature verification failed");
             return ResponseEntity.status(401)
                     .body(Map.of("status", "error", "message", "Invalid signature"));
@@ -94,8 +94,8 @@ public class BillingController {
         }
     }
 
-    private void handleInvoicePaid(com.fasterxml.jackson.databind.JsonNode data) {
-        String stripeSubscriptionId = data.has("subscription") ? data.get("subscription").asText() : null;
+    private void handleInvoicePaid(com.stripe.model.Invoice data) {
+        String stripeSubscriptionId = data.getSubscription();
         if (stripeSubscriptionId == null) return;
 
         subscriptionRepository.findByStripeSubscriptionId(stripeSubscriptionId)
@@ -119,8 +119,8 @@ public class BillingController {
                 });
     }
 
-    private void handleSubscriptionCanceled(com.fasterxml.jackson.databind.JsonNode data) {
-        String stripeSubscriptionId = data.get("id").asText();
+    private void handleSubscriptionCanceled(com.stripe.model.Subscription data) {
+        String stripeSubscriptionId = data.getId();
 
         subscriptionRepository.findByStripeSubscriptionId(stripeSubscriptionId)
                 .ifPresent(sub -> {
@@ -144,9 +144,9 @@ public class BillingController {
                 });
     }
 
-    private void handleSubscriptionUpdated(com.fasterxml.jackson.databind.JsonNode data) {
-        String stripeSubscriptionId = data.get("id").asText();
-        String status = data.has("status") ? data.get("status").asText() : null;
+    private void handleSubscriptionUpdated(com.stripe.model.Subscription data) {
+        String stripeSubscriptionId = data.getId();
+        String status = data.getStatus();
 
         subscriptionRepository.findByStripeSubscriptionId(stripeSubscriptionId)
                 .ifPresent(sub -> {

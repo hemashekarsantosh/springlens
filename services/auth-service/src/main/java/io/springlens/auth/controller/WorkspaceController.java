@@ -167,7 +167,7 @@ public class WorkspaceController {
             @NotBlank String userId,
             @NotBlank String role) {
 
-        UUID userId() { return java.util.UUID.fromString(this.userId); }
+        public UUID userId() { return java.util.UUID.fromString(this.userId); }
     }
 
     public record CreateProjectRequest(
