@@ -8,12 +8,18 @@ COPY settings.gradle settings.gradle
 COPY build.gradle build.gradle
 
 COPY libs/shared/build.gradle libs/shared/build.gradle
-COPY libs/shared/src libs/shared/src
-
+COPY services/ingestion-service/build.gradle services/ingestion-service/build.gradle
 COPY services/analysis-service/build.gradle services/analysis-service/build.gradle
+COPY services/recommendation-service/build.gradle services/recommendation-service/build.gradle
+COPY services/auth-service/build.gradle services/auth-service/build.gradle
+COPY services/notification-service/build.gradle services/notification-service/build.gradle
+
+RUN chmod +x gradlew && ./gradlew :services:analysis-service:dependencies --no-daemon
+
+COPY libs/shared/src libs/shared/src
 COPY services/analysis-service/src services/analysis-service/src
 
-RUN chmod +x gradlew && ./gradlew :services:analysis-service:bootJar -x test --no-daemon
+RUN ./gradlew :services:analysis-service:bootJar -x test --no-daemon
 
 # ─── Extract layers ───────────────────────────────────────────────────────────
 FROM eclipse-temurin:21-jre-jammy AS extractor
