@@ -1,0 +1,359 @@
+openapi: "3.1.0"
+info:
+  title: SpringLens Ingestion API
+  description: Receives startup telemetry from SpringLens JVM agents and CI/CD pipelines.
+  version: "1.0.0"
+  contact:
+    name: SpringLens Platform Team
+
+servers:
+  - url: https://api.springlens.io/v1
+    description: Production
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /ingest:
+    post:
+      summary: Upload startup telemetry snapshot
+      operationId: ingestStartupSnapshot
+      description: |
+        Receives a complete startup telemetry payload from the SpringLens JVM agent.
+        Payloads are deduplicated by (project_id, environment, git_commit_sha) within a 60-second window.
+        Returns 202 Accepted immediately; analysis is async.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartupSnapshotRequest'
+      responses:
+        "202":
+          description: Snapshot accepted and queued for analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+        "200":
+          description: Duplicate snapshot detected — returns existing snapshot ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "413":
+          description: Payload exceeds 10MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+
+  /snapshots/{snapshotId}/status:
+    get:
+      summary: Poll analysis status for a snapshot
+      operationId: getSnapshotStatus
+      parameters:
+        - name: snapshotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Snapshot analysis status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotStatusResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /snapshots/{snapshotId}/budget-check:
+    get:
+      summary: Check if snapshot meets startup budget
+      operationId: checkBudget
+      description: Returns 200 if within budget, 422 if exceeded. Used by CI/CD gate.
+      parameters:
+        - name: snapshotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: budget_ms
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 100
+            maximum: 300000
+            description: Budget in milliseconds
+      responses:
+        "200":
+          description: Startup time within budget
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetCheckResponse'
+        "422":
+          description: Budget exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetExceededResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      description: "API key in format: sl_proj_<base64url>"
+
+  schemas:
+    StartupSnapshotRequest:
+      type: object
+      required:
+        - project_id
+        - environment
+        - agent_version
+        - spring_boot_version
+        - java_version
+        - total_startup_ms
+        - git_commit_sha
+        - beans
+        - phases
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        environment:
+          type: string
+          enum: [dev, staging, production, ci, local]
+        agent_version:
+          type: string
+          example: "1.0.0"
+        spring_boot_version:
+          type: string
+          example: "3.3.2"
+        java_version:
+          type: string
+          example: "21.0.3"
+        total_startup_ms:
+          type: integer
+          description: Total application startup time in milliseconds
+          minimum: 0
+        git_commit_sha:
+          type: string
+          pattern: "^[0-9a-f]{40}$"
+        hostname:
+          type: string
+          description: Optional — used to correlate CI runs
+        beans:
+          type: array
+          items:
+            $ref: '#/components/schemas/BeanEvent'
+        phases:
+          type: array
+          items:
+            $ref: '#/components/schemas/PhaseEvent'
+        autoconfigurations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AutoconfigurationEvent'
+
+    BeanEvent:
+      type: object
+      required: [bean_name, class_name, duration_ms, start_ms]
+      properties:
+        bean_name:
+          type: string
+          example: "dataSource"
+        class_name:
+          type: string
+          example: "com.zaxxer.hikari.HikariDataSource"
+        duration_ms:
+          type: integer
+          minimum: 0
+        start_ms:
+          type: integer
+          description: Milliseconds from startup begin
+          minimum: 0
+        dependencies:
+          type: array
+          items:
+            type: string
+          description: Bean names this bean depends on
+        context_id:
+          type: string
+          description: Spring ApplicationContext ID (for multi-context apps)
+
+    PhaseEvent:
+      type: object
+      required: [phase_name, duration_ms, start_ms]
+      properties:
+        phase_name:
+          type: string
+          enum:
+            - context_refresh
+            - bean_post_processors
+            - application_listeners
+            - context_loaded
+            - started
+        duration_ms:
+          type: integer
+          minimum: 0
+        start_ms:
+          type: integer
+          minimum: 0
+
+    AutoconfigurationEvent:
+      type: object
+      required: [class_name, matched, duration_ms]
+      properties:
+        class_name:
+          type: string
+          example: "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration"
+        matched:
+          type: boolean
+          description: Whether this autoconfiguration was activated
+        duration_ms:
+          type: integer
+          minimum: 0
+        condition_evaluation_ms:
+          type: integer
+          minimum: 0
+
+    IngestResponse:
+      type: object
+      properties:
+        snapshot_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, deduplicated]
+        message:
+          type: string
+
+    SnapshotStatusResponse:
+      type: object
+      properties:
+        snapshot_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, processing, complete, failed]
+        total_startup_ms:
+          type: integer
+        bottleneck_count:
+          type: integer
+        recommendation_count:
+          type: integer
+        completed_at:
+          type: string
+          format: date-time
+
+    BudgetCheckResponse:
+      type: object
+      properties:
+        within_budget:
+          type: boolean
+        actual_ms:
+          type: integer
+        budget_ms:
+          type: integer
+
+    BudgetExceededResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            actual_ms:
+              type: integer
+            budget_ms:
+              type: integer
+            excess_ms:
+              type: integer
+            top_bottlenecks:
+              type: array
+              items:
+                type: object
+                properties:
+                  bean_name:
+                    type: string
+                  duration_ms:
+                    type: integer
+
+    ErrorResponse:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: string
+          example: "BUDGET_EXCEEDED"
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        trace_id:
+          type: string
+          description: X-Request-ID for support correlation
+
+  responses:
+    BadRequest:
+      description: Invalid request payload
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

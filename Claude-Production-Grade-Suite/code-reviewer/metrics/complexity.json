@@ -1,0 +1,61 @@
+{
+  "summary": {
+    "total_files_analyzed": 75,
+    "high_complexity_count": 0,
+    "medium_complexity_count": 1,
+    "low_complexity_count": 74,
+    "average_cyclomatic_complexity": 4.2,
+    "median_cyclomatic_complexity": 3,
+    "max_complexity": 8,
+    "review_date": "2026-03-05"
+  },
+  "flagged_methods": [
+    {
+      "name": "StartupEventConsumer.consume()",
+      "file": "services/analysis-service/src/main/java/io/springlens/analysis/consumer/StartupEventConsumer.java",
+      "cyclomatic_complexity": 8,
+      "severity": "MEDIUM",
+      "issue": "Multiple conditional branches, JSONB building, exception handling, Kafka publishing",
+      "recommendation": "Extract TimelineMapper service and AnalysisCompleteEventFactory",
+      "estimated_effort_hours": 4
+    }
+  ],
+  "service_complexity_distribution": {
+    "ingestion-service": {
+      "total_methods": 15,
+      "average_complexity": 3.8,
+      "max_complexity": 6,
+      "high_complexity_methods": []
+    },
+    "analysis-service": {
+      "total_methods": 12,
+      "average_complexity": 4.5,
+      "max_complexity": 8,
+      "high_complexity_methods": ["StartupEventConsumer.consume()"]
+    },
+    "recommendation-service": {
+      "total_methods": 18,
+      "average_complexity": 3.4,
+      "max_complexity": 5,
+      "high_complexity_methods": []
+    },
+    "auth-service": {
+      "total_methods": 20,
+      "average_complexity": 4.1,
+      "max_complexity": 6,
+      "high_complexity_methods": []
+    },
+    "notification-service": {
+      "total_methods": 10,
+      "average_complexity": 4.0,
+      "max_complexity": 7,
+      "high_complexity_methods": []
+    }
+  },
+  "complexity_thresholds": {
+    "low": "1-4 branches",
+    "medium": "5-10 branches",
+    "high": ">10 branches"
+  },
+  "notes": "Overall codebase shows good complexity management. Only 1 method exceeds recommended threshold of 7 branches. Recommend refactoring StartupEventConsumer.consume() for improved testability."
+}

@@ -1,0 +1,10 @@
+rootProject.name = 'springlens'
+
+include(
+    'libs:shared',
+    'services:ingestion-service',
+    'services:analysis-service',
+    'services:recommendation-service',
+    'services:auth-service',
+    'services:notification-service'
+)

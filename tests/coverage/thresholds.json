@@ -1,0 +1,77 @@
+{
+  "global": {
+    "lines": 85,
+    "branches": 80,
+    "functions": 85,
+    "statements": 85
+  },
+  "services": {
+    "ingestion-service": {
+      "lines": 85,
+      "branches": 80,
+      "functions": 85,
+      "statements": 85,
+      "notes": "Critical path for agent integration — high coverage required"
+    },
+    "analysis-service": {
+      "lines": 90,
+      "branches": 85,
+      "functions": 90,
+      "statements": 90,
+      "notes": "Complex DAG & analysis logic — highest coverage priority"
+    },
+    "recommendation-service": {
+      "lines": 85,
+      "branches": 80,
+      "functions": 85,
+      "statements": 85,
+      "notes": "5 rule engine — scoring accuracy critical"
+    },
+    "auth-service": {
+      "lines": 80,
+      "branches": 75,
+      "functions": 80,
+      "statements": 80,
+      "notes": "OAuth & JWT — defer to Phase 2 testing"
+    },
+    "notification-service": {
+      "lines": 75,
+      "branches": 70,
+      "functions": 75,
+      "statements": 75,
+      "notes": "Webhook delivery — defer to Phase 2 testing"
+    }
+  },
+  "critical_paths": {
+    "agent_ingestion_flow": {
+      "description": "Agent → POST /ingest → Kafka → Analysis",
+      "target_coverage": 95,
+      "modules": [
+        "ingestion-service/controller/IngestionController",
+        "ingestion-service/service/IngestionService",
+        "analysis-service/consumer/StartupEventConsumer"
+      ]
+    },
+    "recommendation_generation": {
+      "description": "Analysis complete → Recommendation engine → ranking",
+      "target_coverage": 95,
+      "modules": [
+        "recommendation-service/engine/RecommendationEngine",
+        "recommendation-service/controller/RecommendationController"
+      ]
+    },
+    "budget_gate": {
+      "description": "CI/CD integration: POST /ingest → GET /budget-check",
+      "target_coverage": 90,
+      "modules": [
+        "ingestion-service/controller/BudgetCheckController"
+      ]
+    }
+  },
+  "enforcement": {
+    "ci_fail_threshold": 85,
+    "ci_warn_threshold": 90,
+    "track_coverage_trend": true,
+    "require_approval_for_coverage_decrease": true
+  }
+}

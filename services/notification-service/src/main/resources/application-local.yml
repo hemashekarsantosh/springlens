@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/springlens_notifications}
+    username: ${DB_USER:springlens}
+    password: ${DB_PASSWORD:springlens_dev}
+  kafka:
+    bootstrap-servers: localhost:9092
+
+springlens:
+  webhook:
+    # 32-byte base64-encoded key for local dev only — NOT for production
+    encryption-key: dGVzdC1rZXktMzItYnl0ZXMtbG9uZy1kZXYhISE=
+
+logging:
+  level:
+    io.springlens: DEBUG
+    org.springframework.security: DEBUG

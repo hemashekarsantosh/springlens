@@ -1,0 +1,239 @@
+version: "3.9"
+
+# SpringLens — Local Development Environment
+# Usage: docker compose up -d
+# Services start on: see port mappings below
+
+services:
+
+  # ── PostgreSQL (Auth, Recommendation, Notification services) ───────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: springlens
+      POSTGRES_PASSWORD: springlens_dev
+      POSTGRES_MULTIPLE_DATABASES: springlens_auth,springlens_recommendation,springlens_notification
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U springlens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── TimescaleDB (Ingestion, Analysis services) ─────────────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: springlens
+      POSTGRES_PASSWORD: springlens_dev
+      POSTGRES_MULTIPLE_DATABASES: springlens_ingestion,springlens_analysis
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U springlens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Kafka (Kraft mode — no ZooKeeper) ────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: "springlens-dev-cluster"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # ── Kafka UI (dev convenience) ───────────────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "8090:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # ── Ingestion Service ────────────────────────────────────────────────────────
+  ingestion-service:
+    build:
+      context: ./services/ingestion-service
+      dockerfile: Dockerfile
+    environment:
+      DB_URL: jdbc:postgresql://timescaledb:5432/springlens_ingestion
+      DB_USER: springlens
+      DB_PASSWORD: springlens_dev
+      KAFKA_BROKERS: kafka:9092
+      REDIS_HOST: redis
+      SPRING_PROFILES_ACTIVE: local
+    ports:
+      - "8081:8081"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Analysis Service ─────────────────────────────────────────────────────────
+  analysis-service:
+    build:
+      context: ./services/analysis-service
+      dockerfile: Dockerfile
+    environment:
+      DB_URL: jdbc:postgresql://timescaledb:5432/springlens_analysis
+      DB_USER: springlens
+      DB_PASSWORD: springlens_dev
+      KAFKA_BROKERS: kafka:9092
+      SPRING_PROFILES_ACTIVE: local
+    ports:
+      - "8082:8082"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  # ── Recommendation Service ───────────────────────────────────────────────────
+  recommendation-service:
+    build:
+      context: ./services/recommendation-service
+      dockerfile: Dockerfile
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/springlens_recommendation
+      DB_USER: springlens
+      DB_PASSWORD: springlens_dev
+      KAFKA_BROKERS: kafka:9092
+      REDIS_HOST: redis
+      SPRING_PROFILES_ACTIVE: local
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  # ── Auth Service ─────────────────────────────────────────────────────────────
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/springlens_auth
+      DB_USER: springlens
+      DB_PASSWORD: springlens_dev
+      REDIS_HOST: redis
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:dev-secret-change-in-production-minimum-256-bits}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      SPRING_PROFILES_ACTIVE: local
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Notification Service ─────────────────────────────────────────────────────
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/springlens_notification
+      DB_USER: springlens
+      DB_PASSWORD: springlens_dev
+      KAFKA_BROKERS: kafka:9092
+      SPRING_PROFILES_ACTIVE: local
+    ports:
+      - "8085:8085"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  # ── Frontend ─────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:dev-nextauth-secret}
+      NEXT_PUBLIC_API_URL: http://localhost:8080/v1
+      AUTH_GITHUB_ID: ${GITHUB_CLIENT_ID}
+      AUTH_GITHUB_SECRET: ${GITHUB_CLIENT_SECRET}
+    ports:
+      - "3000:3000"
+
+  # ── Prometheus ───────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./infrastructure/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  # ── Grafana ──────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./infrastructure/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres_data:
+  timescale_data:
+  kafka_data:
+  grafana_data:

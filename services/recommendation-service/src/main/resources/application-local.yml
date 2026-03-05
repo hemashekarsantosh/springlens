@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/springlens_recommendations}
+    username: ${DB_USER:springlens}
+    password: ${DB_PASSWORD:springlens_dev}
+  kafka:
+    bootstrap-servers: localhost:9092
+
+springlens:
+  security:
+    require-https: false
+
+logging:
+  level:
+    io.springlens: DEBUG
+    org.springframework.security: DEBUG

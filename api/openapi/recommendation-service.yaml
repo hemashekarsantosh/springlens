@@ -1,0 +1,318 @@
+openapi: "3.1.0"
+info:
+  title: SpringLens Recommendation API
+  description: Retrieves ranked optimization recommendations, manages recommendation status, and CI/CD budget configuration.
+  version: "1.0.0"
+
+servers:
+  - url: https://api.springlens.io/v1
+
+security:
+  - BearerAuth: []
+
+paths:
+  /projects/{projectId}/recommendations:
+    get:
+      summary: Get latest ranked recommendations for a project
+      operationId: getRecommendations
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: environment
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [lazy_loading, aot_compilation, graalvm_native, classpath_optimization, dependency_removal]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, applied, wont_fix]
+      responses:
+        "200":
+          description: Ranked list of recommendations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationListResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /projects/{projectId}/recommendations/{recommendationId}/status:
+    patch:
+      summary: Update recommendation status (applied / won't fix)
+      operationId: updateRecommendationStatus
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: recommendationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [applied, wont_fix, active]
+                note:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recommendation'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{projectId}/ci-budgets:
+    get:
+      summary: List CI/CD budget configurations
+      operationId: listCiBudgets
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of budget configs per environment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  budgets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CiBudget'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      summary: Create or update CI/CD budget for an environment
+      operationId: upsertCiBudget
+      description: Requires Admin role for production environment (BR-006)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CiBudgetRequest'
+      responses:
+        "200":
+          description: Budget saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CiBudget'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RecommendationListResponse:
+      type: object
+      properties:
+        snapshot_id:
+          type: string
+          format: uuid
+        generated_at:
+          type: string
+          format: date-time
+        is_stale:
+          type: boolean
+          description: True if based on data older than 24h
+        total_potential_savings_ms:
+          type: integer
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Recommendation'
+
+    Recommendation:
+      type: object
+      properties:
+        recommendation_id:
+          type: string
+          format: uuid
+        rank:
+          type: integer
+          description: 1 = highest priority
+        category:
+          type: string
+          enum: [lazy_loading, aot_compilation, graalvm_native, classpath_optimization, dependency_removal]
+        title:
+          type: string
+          example: "Enable lazy initialization for 12 beans"
+        description:
+          type: string
+        estimated_savings_ms:
+          type: integer
+        estimated_savings_percent:
+          type: number
+        effort:
+          type: string
+          enum: [low, medium, high]
+        status:
+          type: string
+          enum: [active, applied, wont_fix]
+        code_snippet:
+          type: string
+          nullable: true
+          description: Copy-paste configuration or code fix
+        config_snippet:
+          type: string
+          nullable: true
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Compatibility warnings (e.g., AOT reflection issues)
+        affected_beans:
+          type: array
+          items:
+            type: string
+        graalvm_feasibility:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/GraalvmFeasibility'
+        applied_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    GraalvmFeasibility:
+      type: object
+      properties:
+        feasible:
+          type: boolean
+        blockers:
+          type: array
+          items:
+            type: string
+          description: Reasons native compilation is blocked (reflection usage, dynamic proxies, etc.)
+        estimated_native_startup_ms:
+          type: integer
+          nullable: true
+
+    CiBudget:
+      type: object
+      properties:
+        budget_id:
+          type: string
+          format: uuid
+        environment:
+          type: string
+        budget_ms:
+          type: integer
+        alert_threshold_ms:
+          type: integer
+          description: Warn (but don't fail) at this threshold
+        enabled:
+          type: boolean
+        created_by:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    CiBudgetRequest:
+      type: object
+      required: [environment, budget_ms]
+      properties:
+        environment:
+          type: string
+          enum: [dev, staging, production, ci]
+        budget_ms:
+          type: integer
+          minimum: 100
+          maximum: 300000
+        alert_threshold_ms:
+          type: integer
+          nullable: true
+        enabled:
+          type: boolean
+          default: true
+
+    ErrorResponse:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        trace_id:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

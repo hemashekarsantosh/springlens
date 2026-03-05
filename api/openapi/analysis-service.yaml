@@ -1,0 +1,421 @@
+openapi: "3.1.0"
+info:
+  title: SpringLens Analysis API
+  description: Query startup timelines, bean graphs, and phase breakdowns. JWT-authenticated for dashboard users.
+  version: "1.0.0"
+
+servers:
+  - url: https://api.springlens.io/v1
+
+security:
+  - BearerAuth: []
+
+paths:
+  /projects/{projectId}/snapshots:
+    get:
+      summary: List startup snapshots for a project
+      operationId: listSnapshots
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: environment
+          in: query
+          schema:
+            type: string
+            enum: [dev, staging, production, ci, local]
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Cursor for pagination (opaque, base64-encoded)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          description: Paginated list of snapshots
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotListResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /projects/{projectId}/snapshots/{snapshotId}/timeline:
+    get:
+      summary: Get full startup timeline for a snapshot
+      operationId: getTimeline
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: snapshotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: min_duration_ms
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Filter beans below this duration
+        - name: package_prefix
+          in: query
+          schema:
+            type: string
+          description: Filter by Java package prefix
+      responses:
+        "200":
+          description: Full startup timeline with beans and phases
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimelineResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{projectId}/snapshots/{snapshotId}/bean-graph:
+    get:
+      summary: Get bean dependency graph (DAG)
+      operationId: getBeanGraph
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: snapshotId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Bean dependency graph as nodes and edges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BeanGraphResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{projectId}/compare:
+    get:
+      summary: Compare two startup snapshots
+      operationId: compareSnapshots
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: baseline
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Baseline snapshot ID
+        - name: target
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Target snapshot ID to compare against baseline
+      responses:
+        "200":
+          description: Diff of two startup snapshots
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotComparisonResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /workspaces/{workspaceId}/overview:
+    get:
+      summary: Organization-wide startup health overview
+      operationId: getWorkspaceOverview
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Aggregate startup metrics across all workspace projects
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceOverviewResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    SnapshotListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SnapshotSummary'
+        cursor:
+          type: string
+          nullable: true
+        total:
+          type: integer
+
+    SnapshotSummary:
+      type: object
+      properties:
+        snapshot_id:
+          type: string
+          format: uuid
+        environment:
+          type: string
+        total_startup_ms:
+          type: integer
+        bean_count:
+          type: integer
+        bottleneck_count:
+          type: integer
+        git_commit_sha:
+          type: string
+        captured_at:
+          type: string
+          format: date-time
+        trend:
+          type: string
+          enum: [faster, slower, stable, baseline]
+
+    TimelineResponse:
+      type: object
+      properties:
+        snapshot_id:
+          type: string
+          format: uuid
+        total_startup_ms:
+          type: integer
+        phases:
+          type: array
+          items:
+            $ref: '#/components/schemas/PhaseBreakdown'
+        beans:
+          type: array
+          items:
+            $ref: '#/components/schemas/BeanTiming'
+        autoconfigurations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AutoconfigSummary'
+
+    PhaseBreakdown:
+      type: object
+      properties:
+        phase_name:
+          type: string
+        duration_ms:
+          type: integer
+        start_ms:
+          type: integer
+        percentage_of_total:
+          type: number
+
+    BeanTiming:
+      type: object
+      properties:
+        bean_name:
+          type: string
+        class_name:
+          type: string
+        duration_ms:
+          type: integer
+        start_ms:
+          type: integer
+        is_bottleneck:
+          type: boolean
+        dependencies:
+          type: array
+          items:
+            type: string
+
+    AutoconfigSummary:
+      type: object
+      properties:
+        class_name:
+          type: string
+        matched:
+          type: boolean
+        duration_ms:
+          type: integer
+        recommendation:
+          type: string
+          nullable: true
+          description: If this autoconfig can be excluded, why and how
+
+    BeanGraphResponse:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              class_name:
+                type: string
+              duration_ms:
+                type: integer
+              is_bottleneck:
+                type: boolean
+        edges:
+          type: array
+          items:
+            type: object
+            properties:
+              source:
+                type: string
+              target:
+                type: string
+
+    SnapshotComparisonResponse:
+      type: object
+      properties:
+        baseline_snapshot_id:
+          type: string
+          format: uuid
+        target_snapshot_id:
+          type: string
+          format: uuid
+        total_delta_ms:
+          type: integer
+          description: Positive = regression, negative = improvement
+        added_beans:
+          type: array
+          items:
+            $ref: '#/components/schemas/BeanTiming'
+        removed_beans:
+          type: array
+          items:
+            $ref: '#/components/schemas/BeanTiming'
+        changed_beans:
+          type: array
+          items:
+            type: object
+            properties:
+              bean_name:
+                type: string
+              baseline_ms:
+                type: integer
+              target_ms:
+                type: integer
+              delta_ms:
+                type: integer
+              delta_percent:
+                type: number
+
+    WorkspaceOverviewResponse:
+      type: object
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        project_count:
+          type: integer
+        projects:
+          type: array
+          items:
+            type: object
+            properties:
+              project_id:
+                type: string
+                format: uuid
+              project_name:
+                type: string
+              latest_startup_ms:
+                type: integer
+              trend_7d:
+                type: string
+                enum: [improving, degrading, stable, no_data]
+              last_seen:
+                type: string
+                format: date-time
+
+    ErrorResponse:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        trace_id:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Insufficient permissions for this workspace/project
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

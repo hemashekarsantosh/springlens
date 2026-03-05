@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/springlens_auth}
+    username: ${DB_USER:springlens}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 3
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI:http://localhost:8084}
+
+server:
+  port: 8084
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+springlens:
+  jwt:
+    # ✅ HARDENED: Secret now loaded from AWS Secrets Manager (springlens/jwt-secret)
+    issuer: ${JWT_ISSUER:https://api.springlens.io}
+  github:
+    client-id: ${GITHUB_CLIENT_ID}
+    client-secret: ${GITHUB_CLIENT_SECRET}
+  # ✅ HARDENED: Stripe webhook secret loaded from AWS Secrets Manager (springlens/stripe-webhook-secret)
+  stripe: {}
+  internal:
+    allowed-cidr: ${INTERNAL_CIDR:10.0.0.0/8}
+  secrets:
+    cache-ttl-minutes: ${SECRETS_CACHE_TTL_MINUTES:60}
+
+logging:
+  structured:
+    format:
+      console: json
+  level:
+    io.springlens: INFO

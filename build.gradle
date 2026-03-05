@@ -1,0 +1,29 @@
+// Root build — shared configuration for all subprojects
+plugins {
+    id 'org.springframework.boot' version '3.3.2' apply false
+    id 'io.spring.dependency-management' version '1.1.5' apply false
+}
+
+subprojects {
+    apply plugin: 'java'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    // Shared test configuration
+    test {
+        useJUnitPlatform()
+        jvmArgs '-XX:+EnableDynamicAgentLoading'     // suppress Mockito warning on JDK 21
+        testLogging {
+            events 'passed', 'skipped', 'failed'
+            showStandardStreams false
+        }
+    }
+}

@@ -1,0 +1,145 @@
+{
+  "summary": {
+    "critical_path_coverage": "80-90%",
+    "untested_files_count": 8,
+    "untested_public_methods_count": 12,
+    "high_risk_gaps": [
+      "Circuit breaker fallback methods",
+      "RLS policy enforcement (database level)",
+      "Dead-letter queue handling"
+    ]
+  },
+  "coverage_by_service": {
+    "ingestion-service": {
+      "coverage_estimate": "85-90%",
+      "status": "GOOD",
+      "tested_classes": [
+        "IngestionService",
+        "IngestController",
+        "ApiKeyAuthFilter"
+      ],
+      "untested_classes": [
+        "WebMvcConfig (config only)"
+      ],
+      "gaps": [
+        "Rate limiting edge cases (burst at limit boundary)",
+        "Concurrent ingest of same snapshot (race condition)"
+      ]
+    },
+    "analysis-service": {
+      "coverage_estimate": "85-90%",
+      "status": "GOOD",
+      "tested_classes": [
+        "BeanGraphAnalyzer (8 unit tests)",
+        "PhaseAnalyzer (9 unit tests)",
+        "StartupEventConsumer (integration tests)",
+        "TimelineController (2 integration tests)"
+      ],
+      "untested_classes": [
+        "KafkaConfig (config only)"
+      ],
+      "gaps": [
+        "Null handling edge cases in JSONB building",
+        "Large bean graphs (>1000 beans) performance",
+        "Circular dependency detection"
+      ]
+    },
+    "recommendation-service": {
+      "coverage_estimate": "85-90%",
+      "status": "GOOD",
+      "tested_classes": [
+        "RecommendationEngine (15 unit tests covering all 5 rules)",
+        "AnalysisCompleteConsumer"
+      ],
+      "untested_classes": [
+        "RecommendationController (partial)",
+        "CiBudgetRepository"
+      ],
+      "gaps": [
+        "Quota enforcement for Free tier",
+        "Recommendation ranking stability (multiple recommendations with same savings)"
+      ]
+    },
+    "auth-service": {
+      "coverage_estimate": "60-70%",
+      "status": "PARTIAL",
+      "tested_classes": [
+        "JwtService",
+        "SecretsService",
+        "BillingController"
+      ],
+      "untested_classes": [
+        "GitHubOAuthController (partial test)",
+        "ApiKeyService",
+        "PlanQuotaEnforcer",
+        "WorkspaceController"
+      ],
+      "gaps": [
+        "OAuth token refresh flow",
+        "SAML authentication",
+        "Plan quota enforcement across all endpoints",
+        "Workspace member invitation flow"
+      ],
+      "note": "Auth service testing is deferred to Phase 2 (not in critical path for MVP)"
+    },
+    "notification-service": {
+      "coverage_estimate": "50-60%",
+      "status": "MINIMAL",
+      "tested_classes": [
+        "WebhookUrlValidator"
+      ],
+      "untested_classes": [
+        "WebhookDeliveryService",
+        "SlackWebhookDelivery",
+        "GitHubPrCommentDelivery",
+        "RecommendationsReadyConsumer"
+      ],
+      "gaps": [
+        "Webhook retry logic with exponential backoff",
+        "Slack message formatting",
+        "GitHub PR comment creation",
+        "Delivery log persistence",
+        "Encryption service for webhook URLs"
+      ],
+      "note": "Notification service testing is deferred to Phase 2 (not in critical path for MVP)"
+    }
+  },
+  "high_risk_untested_code": [
+    {
+      "file": "services/ingestion-service/src/main/java/io/springlens/ingestion/config/SecurityConfig.java",
+      "reason": "No tests verify that unauthenticated requests are rejected",
+      "risk": "HIGH - unauthorized access possible if filter fails",
+      "test_needed": "ApiKeyAuthFilter integration test"
+    },
+    {
+      "file": "services/analysis-service/src/main/java/io/springlens/analysis/consumer/StartupEventConsumer.java",
+      "reason": "Error handling path (line 102-105) is tested but DLQ behavior is not",
+      "risk": "MEDIUM - failed messages may be lost",
+      "test_needed": "Kafka DLQ configuration test"
+    },
+    {
+      "file": "services/recommendation-service/src/main/java/io/springlens/recommendation/engine/RecommendationEngine.java",
+      "reason": "Quota enforcement (Free tier max 3 recommendations) is not tested",
+      "risk": "MEDIUM - Free tier users could receive unlimited recommendations",
+      "test_needed": "PlanQuotaEnforcer integration test"
+    }
+  ],
+  "test_plan_alignment": {
+    "acceptance_criteria_covered": 10,
+    "acceptance_criteria_total": 10,
+    "coverage_percentage": "100%",
+    "note": "All acceptance criteria from BRD are traced to test cases"
+  },
+  "recommendations": {
+    "critical_path": [
+      "Add authentication filter integration tests",
+      "Add quota enforcement tests",
+      "Add Kafka DLQ behavior tests"
+    ],
+    "next_sprint": [
+      "Complete auth-service test coverage (60% → 85%)",
+      "Complete notification-service test coverage (50% → 80%)",
+      "Add distributed tracing tests (validate context propagation)"
+    ]
+  }
+}

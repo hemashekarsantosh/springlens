@@ -1,0 +1,90 @@
+# HIGH-002 & HIGH-003 Remediation: Resilience4j + Kafka DLQ Configuration
+# Add these sections to services/ingestion-service/src/main/resources/application.yml
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    producer:
+      key-serializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all  # HIGH-003: Require all replicas to acknowledge
+      retries: 3
+      properties:
+        linger.ms: 10
+        batch.size: 16384
+    consumer:
+      bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+      group-id: ingestion-service
+      auto-offset-reset: earliest
+      max-poll-records: 100
+      session-timeout-ms: 60000
+    listener:
+      type: batch
+      poll-timeout: 3000
+      ack-mode: manual_immediate  # HIGH-003: Manual ACK after processing
+      concurrency: 3
+
+# HIGH-002: Resilience4j Circuit Breaker Configuration
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        registerHealthIndicator: true
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        slowCallRateThreshold: 50
+        slowCallDurationThreshold: 3s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 10s
+        recordExceptions:
+          - java.net.ConnectException
+          - java.net.SocketTimeoutException
+          - org.springframework.web.client.HttpServerErrorException
+    instances:
+      auth-service:
+        baseConfig: default
+      analysis-service:
+        baseConfig: default
+
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 1000
+        retryExceptions:
+          - java.net.ConnectException
+          - java.net.SocketTimeoutException
+    instances:
+      auth-service:
+        baseConfig: default
+
+  timelimiter:
+    configs:
+      default:
+        cancelRunningFuture: true
+        timeoutDuration: 3s
+    instances:
+      auth-service:
+        baseConfig: default
+
+# HIGH-003: Error Handling & Dead-Letter Queue
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus,circuitbreakers,retries
+  health:
+    circuitbreakers:
+      enabled: true
+
+# Application-specific DLQ configuration
+app:
+  kafka:
+    dlq-enabled: true
+    dlq-topic-suffix: .dead-letter
+    retry-attempts: 3
+    retry-backoff-ms: 1000
+    enable-error-handler: true

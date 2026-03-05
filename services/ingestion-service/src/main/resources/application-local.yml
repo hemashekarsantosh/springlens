@@ -1,0 +1,19 @@
+# Local development profile (no Docker)
+# Override: DB points to local PostgreSQL/TimescaleDB, Kafka on localhost
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/springlens_ingestion}
+    username: ${DB_USER:springlens}
+    password: ${DB_PASSWORD:springlens_dev}
+  kafka:
+    bootstrap-servers: localhost:9092
+
+# Relaxed security for local dev — no mTLS between services
+springlens:
+  security:
+    require-https: false
+
+logging:
+  level:
+    io.springlens: DEBUG
+    org.springframework.security: DEBUG

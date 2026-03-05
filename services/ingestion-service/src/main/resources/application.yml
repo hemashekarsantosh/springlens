@@ -1,0 +1,135 @@
+spring:
+  application:
+    name: ingestion-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/springlens_ingestion}
+    username: ${DB_USER:springlens}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 3000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: public
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        linger.ms: 10
+        batch.size: 16384
+    consumer:
+      bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+      group-id: ingestion-service
+      auto-offset-reset: earliest
+      max-poll-records: 100
+      session-timeout-ms: 60000
+    listener:
+      type: batch
+      poll-timeout: 3000
+      ack-mode: manual_immediate
+      concurrency: 3
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        registerHealthIndicator: true
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        slowCallRateThreshold: 50
+        slowCallDurationThreshold: 3s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 10s
+        recordExceptions:
+          - java.net.ConnectException
+          - java.net.SocketTimeoutException
+          - org.springframework.web.client.HttpServerErrorException
+    instances:
+      auth-service:
+        baseConfig: default
+      analysis-service:
+        baseConfig: default
+
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 1000
+        retryExceptions:
+          - java.net.ConnectException
+          - java.net.SocketTimeoutException
+    instances:
+      auth-service:
+        baseConfig: default
+
+  timelimiter:
+    configs:
+      default:
+        cancelRunningFuture: true
+        timeoutDuration: 3s
+    instances:
+      auth-service:
+        baseConfig: default
+
+server:
+  port: 8081
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics,circuitbreakers,retries
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+springlens:
+  ingestion:
+    max-payload-bytes: 10485760   # 10MB
+    idempotency-window-seconds: 60
+  auth-service:
+    url: ${AUTH_SERVICE_URL:http://localhost:8084}
+
+app:
+  kafka:
+    dlq-enabled: true
+    dlq-topic-suffix: .dead-letter
+    retry-attempts: 3
+    retry-backoff-ms: 1000
+    enable-error-handler: true
+
+logging:
+  structured:
+    format:
+      console: json
+  level:
+    io.springlens: INFO
+    org.springframework.kafka: WARN

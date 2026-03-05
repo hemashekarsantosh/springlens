@@ -1,0 +1,21 @@
+plugins {
+    id 'java-library'
+}
+
+group = 'io.springlens'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // No Spring Boot deps — pure Java library
+    compileOnly 'com.fasterxml.jackson.core:jackson-annotations:2.17.2'
+}
